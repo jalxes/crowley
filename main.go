@@ -8,15 +8,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/antchfx/htmlquery"
-	"golang.org/x/net/html"
+	"github.com/PuerkitoBio/goquery"
 )
 
 func main() {
 	u := "https://en.wikipedia.org/wiki/Rider-Waite_tarot_deck"
 	fmt.Println(fmt.Sprintf("url: %s", u))
 
-	doc, err := htmlquery.LoadURL(u)
+	doc, err := goquery.NewDocument(u)
 	if err != nil {
 		panic(err)
 	}
@@ -26,44 +25,49 @@ func main() {
 		url   string
 		link  string
 		desc  string
+		cat   interface{}
 	}
 
 	var entries []entry
-	htmlquery.FindEach(doc, "//div[@class='mw-parser-output']/center/ul/li", func(i int, node *html.Node) {
-		item := entry{}
-		item.id = i
-		// h2 := htmlquery.FindOne(node, "//h2")
-		// item.title = htmlquery.InnerText(h2)
-		// item.url = htmlquery.SelectAttr(htmlquery.FindOne(h2, "a"), "href")
-		// if n := htmlquery.FindOne(node, "//div[@class='b_caption']/p"); n != nil {
-		// 	item.desc = htmlquery.InnerText(n)
-		// }
-		item.url = htmlquery.SelectAttr(htmlquery.FindOne(node, "//a[@class='image']"), "href")
-		item.link = htmlquery.SelectAttr(htmlquery.FindOne(node, "//a[@class='image']/img"), "src")
-		item.title = htmlquery.SelectAttr(htmlquery.FindOne(node, "//p/a"), "title")
-		item.desc = htmlquery.InnerText(htmlquery.FindOne(node, "//p/a"))
-		item.link = strings.Replace(item.link, "thumb/", "", 1)
-		item.link = item.link[:strings.LastIndex(item.link, "/")]
-		item.link = "https:" + item.link
-		entries = append(entries, item)
+	doc.Find("div.mw-parser-output center ul li").Each(func(i int, node *goquery.Selection) {
+		id := i + 1
+		title, _ := node.Find("p a").Attr("title")
+		title = strings.Replace(title, "(Tarot card)", "", 1)
+		title = strings.Replace(title, "(tarot card)", "", 1)
 
+		url, _ := node.Find("a.image").Attr("href")
+		link, _ := node.Find("a.image img").Attr("src")
+		desc := node.Find("p a").Text()
+		// cat, _ := node.ParentFiltered("center").Html()
+		link = strings.Replace(link, "thumb/", "", 1)
+		link = link[:strings.LastIndex(link, "/")]
+		link = "https:" + link
+		entries = append(entries, entry{
+			id:    id,
+			title: title,
+			url:   url,
+			link:  link,
+			desc:  desc,
+			// cat:   cat,
+		})
 	})
 	for _, item := range entries {
 		fmt.Println(fmt.Sprintf("%d", item.id))
-		fmt.Println(fmt.Sprintf("%d title: %s", item.id, item.title))
+		fmt.Println(fmt.Sprintf("title: %s", item.title))
 		fmt.Println(fmt.Sprintf("url: %s", item.url))
 		fmt.Println(fmt.Sprintf("link: %s", item.link))
 		fmt.Println(fmt.Sprintf("desc: %s", item.desc))
+		// fmt.Println(fmt.Sprintf("cat: %s", item.cat))
 		fmt.Println("=====================")
 		res, err := http.Get(item.link)
 		if err != nil {
 			log.Fatal(fmt.Sprintf("cant get %s", item.title))
 		}
 		defer res.Body.Close()
-
-		file, err := os.Create("tmp/" + item.title + ".jpg")
+		os.MkdirAll("images", 0777)
+		file, err := os.Create(fmt.Sprintf("images/%d-%s.jpg", item.id, item.title))
 		if err != nil {
-			log.Fatal(fmt.Sprintf("cant create %s", item.title))
+			log.Fatal(err)
 		}
 		defer file.Close()
 
